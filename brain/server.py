@@ -1,6 +1,8 @@
 """
-FastAPI server for the Titans-based security analysis engine.
-Exposes endpoints for analyzing text inputs and detecting anomalies.
+FastAPI server for surprise scoring.
+
+The scorer is the neural memory in titans.py (the Titans memory
+architecture in this repository). This process is not itself a Titans agent.
 """
 
 from fastapi import FastAPI, BackgroundTasks
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="Mnemosyne Brain",
-    description="Titans-based security analysis engine for LLM traffic",
+    description="Surprise scoring for LLM traffic using the Titans neural memory in titans.py",
     version="1.0.0"
 )
 
@@ -61,14 +63,14 @@ async def health_check():
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_text(request: AnalysisRequest, background_tasks: BackgroundTasks):
     """
-    Analyze input text for anomalies using Titans architecture.
-    
+    Score input text with the Titans neural memory (titans.py).
+
     Flow:
-    1. Retrieve or create SecurityAgent for the session
-    2. Calculate surprise score for the input text
-    3. Determine if the input is anomalous
-    4. Schedule background task to update neural memory
-    5. Return immediate response
+    1. Load the SecurityAgent stored under the fixed id global_demo_session
+    2. Calculate the surprise score for the input text
+    3. Compare that score with the default threshold in is_anomalous
+    4. Schedule update_memory as a background task
+    5. Return the score and the anomaly flag
     
     Args:
         request: Analysis request containing session_id and text

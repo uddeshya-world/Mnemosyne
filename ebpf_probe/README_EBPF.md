@@ -1,15 +1,15 @@
-# eBPF Probe Prototype (Linux/WSL)
+# eBPF Probe (Linux/WSL)
 
-This directory contains a **Proof-of-Concept Kernel-Space Firewall** using Rust and eBPF (Aya framework).
+This directory contains an XDP program and a user-space loader built with Rust and Aya. `xdp_firewall` in `ebpf_program/src/main.rs` returns `XDP_PASS` for every packet. It does not read packet data and does not drop traffic.
 
 ## Prerequisites
 *   **Linux Interface**: Real Linux kernel required (WSL2 or Native).
-*   **Docker**: Easiest way to build and run (handles toolchains).
+*   **Docker**: `Dockerfile` builds the loader. The root compose file does not start it.
 *   **Privileges**: eBPF requires `sudo` or `--privileged`.
 
-## 🚀 How to Run (Native WSL - Recommended)
+## How to run on Linux or WSL
 
-Since Docker build can be complex, running natively in WSL is often easier.
+The commands below are the steps previously written for a native Linux or WSL checkout. They were not re-run for the documentation cleanup.
 
 1.  **Install Prerequisites**:
     ```bash
@@ -26,7 +26,7 @@ Since Docker build can be complex, running natively in WSL is often easier.
     ```bash
     rustup toolchain install nightly
     rustup target add bpfel-unknown-none --toolchain nightly
-    restup component add rust-src --toolchain nightly
+    rustup component add rust-src --toolchain nightly
     ```
 
 4.  **Run the Loader**:
@@ -39,4 +39,6 @@ Since Docker build can be complex, running natively in WSL is often easier.
     ```
     *(Note: `-E` preserves env vars if needed)*
 
-## 🐳 Docker Method (Alternate)
+## Docker
+
+`Dockerfile` in this directory is a multi-stage build of `user_loader`. The root `docker-compose.yml` does not start that image. No Docker run steps are written down in this file.
