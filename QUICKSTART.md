@@ -1,82 +1,73 @@
 # Project Mnemosyne - Quick Start Guide
 
-## ✅ Prerequisites Check
-- [x] Docker installed (version 27.3.1)
-- [x] Docker Compose installed (v2.29.7)
-- [ ] Groq API Key obtained from https://console.groq.com/
+## Prerequisites
 
-## 🚀 Setup Steps
+- Docker, to build and run the brain and proxy
+- A Groq API key from https://console.groq.com/
+- Python 3.11 or newer, if you run `tests/attack_sim.py`
 
-### Step 1: Set Your Groq API Key
+The eBPF loader is documented separately in `ebpf_probe/README_EBPF.md`. It is not started by `docker-compose.yml`.
 
-You need to set your Groq API key as an environment variable. Choose your platform:
+## Setup
+
+### Step 1: Set the Groq API key
+
+The proxy process exits at startup if `GROQ_API_KEY` is unset (`proxy/src/main.rs`).
 
 **Windows (PowerShell):**
+
 ```powershell
 $env:GROQ_API_KEY="gsk_your_actual_key_here"
 ```
 
 **Linux/Mac:**
+
 ```bash
 export GROQ_API_KEY=gsk_your_actual_key_here
 ```
 
-**Alternatively**, you can edit the `.env` file in the project root:
-```bash
-# Edit .env file
-GROQ_API_KEY=gsk_your_actual_key_here
-```
+`.env.example` at the repository root lists the same variable name. `docker-compose.yml` passes `GROQ_API_KEY` through to the proxy service.
 
-### Step 2: Build and Start the Services
+### Step 2: Build and start the services
 
 ```bash
 docker-compose up --build
 ```
 
-This will:
-1. Build the Python brain container (~2-3 minutes)
-2. Build the Rust proxy container (~5-7 minutes)
-3. Start both services with health checks
-4. Create a network bridge for inter-service communication
+The compose file builds `./brain` and `./proxy`, publishes ports 5000 and 8080, and places both containers on the `mnemosyne-net` bridge. The proxy `depends_on` the brain. There is no `healthcheck` field.
 
-**Expected Output:**
+Log lines emitted by the current processes include:
+
 ```
 mnemosyne-brain | INFO:     Application startup complete.
 mnemosyne-proxy | Mnemosyne Proxy listening on 0.0.0.0:8080
 ```
 
-### Step 3: Verify Services Are Running
-
-Open a new terminal and check health:
+### Step 3: Check the health routes
 
 ```bash
-# Check proxy health
 curl http://localhost:8080/health
-
-# Check brain health
 curl http://localhost:5000/health
 ```
 
-Expected responses:
+The handlers return JSON of this shape:
+
 ```json
 {"status":"healthy","service":"mnemosyne-proxy"}
 {"status":"healthy","active_sessions":0}
 ```
 
-### Step 4: Run the Test Suite
+`active_sessions` is the number of entries in the in-process session map. After `POST /analyze` has run, that count is the single forced id `global_demo_session`, not a count of proxy clients.
+
+### Step 4: Run the simulation script
 
 ```bash
 python tests/attack_sim.py
 ```
 
-This will run three tests:
-1. ✅ Normal traffic flow to Groq
-2. ✅ Jailbreak attack detection
-3. ✅ Latency benchmark
+The script requires the proxy to be reachable. It runs a warmup, a benign request, a gradual prompt sequence, a latency loop, and two further scenarios (a two-turn message list and a hyphenated string). The latency loop in the script treats an average under 2000 ms as acceptable. Results are written to `test_results.json` in the current directory. That filename is listed in `.gitignore`.
 
-### Step 5: Try It Yourself!
-
-Send a chat request:
+### Step 5: Send a request
 
 ```bash
 curl -X POST http://localhost:8080/chat/completions \
@@ -89,72 +80,63 @@ curl -X POST http://localhost:8080/chat/completions \
   }'
 ```
 
-## 🐛 Troubleshooting
+The proxy forwards `model` when it is present. HTTP 200 is the Groq body. HTTP 403 means the brain set `is_anomaly`. HTTP 503 means the brain could not be used.
 
-### Issue: "GROQ_API_KEY must be set"
-**Solution:** Make sure you've set the environment variable before running `docker-compose up`.
+## Troubleshooting
 
-### Issue: Build fails on Rust compilation
-**Solution:** The Rust build can take 5-10 minutes. Be patient. If it fails, try:
+### "GROQ_API_KEY must be set"
+
+Export the variable in the environment that runs `docker-compose up`, or provide it in a `.env` file that Compose reads for substitution.
+
+### The proxy image fails to build
+
+The proxy Dockerfile compiles Rust inside the image. To rebuild that image without using the cache:
+
 ```bash
 docker-compose build --no-cache proxy
 ```
 
-### Issue: Brain service won't start
-**Solution:** Check logs:
+### The brain container exits
+
 ```bash
 docker logs mnemosyne-brain
 ```
 
-### Issue: Port already in use
-**Solution:** Stop any services using ports 5000 or 8080:
+### Port 5000 or 8080 is already in use
+
+Stop the process bound to that port, or change the host side of the port mapping in `docker-compose.yml`.
+
+**Windows:**
+
 ```bash
-# Windows
 netstat -ano | findstr :8080
 taskkill /PID <PID> /F
+```
 
-# Linux/Mac
+**Linux/Mac:**
+
+```bash
 lsof -ti:8080 | xargs kill -9
 ```
 
-## 🛑 Stopping the Services
+## Stopping the services
 
 ```bash
-# Stop and remove containers
 docker-compose down
-
-# Stop, remove containers, and clean up volumes
-docker-compose down -v
 ```
 
-## 📊 Monitoring
+`docker-compose down -v` also removes named volumes. The current compose file does not declare any volumes.
 
-View logs in real-time:
+## Logs
 
 ```bash
-# All services
 docker-compose logs -f
-
-# Just the proxy
 docker-compose logs -f mnemosyne-proxy
-
-# Just the brain
 docker-compose logs -f mnemosyne-brain
 ```
 
-## 🎯 Next Steps
+## Further detail
 
-1. **Experiment with different prompts** - Try benign and malicious inputs
-2. **Adjust the threshold** - Edit `brain/titans.py` to tune sensitivity
-3. **Monitor surprise scores** - Check brain logs to see detection patterns
-4. **Try different Groq models** - Use mixtral-8x7b-32768 or other models
-
-## 📚 Additional Resources
-
-- Full documentation: See `README.md`
-- API reference: See `README.md` API Usage section
-- Architecture details: See `implementation_plan.md`
-
----
-
-**Ready to secure your LLM traffic! 🛡️**
+- Request path and module behavior: `README.md`
+- What the source shows, and which earlier completion claims it does not support: `docs/IMPLEMENTATION_NOTES.md`
+- Default anomaly threshold: the `threshold` argument of `is_anomalous` in `brain/titans.py` (currently `4.2`)

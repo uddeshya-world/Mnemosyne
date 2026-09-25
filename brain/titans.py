@@ -1,19 +1,22 @@
 """
-Titans Architecture: Neural Memory with Test-Time Training
-Implements a security agent that learns and adapts to input patterns in real-time.
+Neural memory module used by the Mnemosyne brain service.
+
+In this repository, "Titans" means this memory architecture only:
+an embedding, an LSTM short-term context, and an MLP, with a
+next-character surprise score and one gradient update step.
+It does not name an agent.
 """
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from typing import Dict, Tuple
-import hashlib
 
 
 class NeuralMemory(nn.Module):
     """
-    Titans MAC Architecture:
-    Short-Term Context (LSTM) + Long-Term Memory (MLP)
+    Memory module: embedding, LSTM, and a two-layer MLP.
+    This is the Titans memory architecture in this repository.
     """
     
     def __init__(self, embed_dim: int = 16, hidden_dim: int = 32, vocab_size: int = 100):
@@ -31,8 +34,7 @@ class NeuralMemory(nn.Module):
             batch_first=True
         )
         
-        # Long-Term Memory (MLP)
-        # Input is combined LSTM output (hidden_dim) + Embedding (embed_dim)
+        # MLP. It reads the LSTM hidden size only; the embedding is not concatenated.
         self.fc1 = nn.Linear(hidden_dim, hidden_dim)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_dim, vocab_size)
@@ -47,8 +49,7 @@ class NeuralMemory(nn.Module):
         # Pass through LSTM Controller
         lstm_out, new_hidden = self.lstm(embedded, hidden)  # lstm_out: [batch, seq, hidden_dim]
         
-        # Pass through Deep Memory (MLP)
-        # Using LSTM output as the context-enriched input to memory
+        # MLP over the LSTM output
         mem_out = self.fc1(lstm_out)
         mem_out = self.relu(mem_out)
         logits = self.fc2(mem_out)  # [batch, seq, vocab]
@@ -58,7 +59,10 @@ class NeuralMemory(nn.Module):
 
 class SecurityAgent:
     """
-    Titans-based security agent with MAC architecture.
+    Optimizer, loss, and LSTM state for one NeuralMemory instance.
+
+    The class name is historical. This is not a Titans agent.
+    Titans refers only to the memory module above.
     """
     
     def __init__(self, embed_dim: int = 16, hidden_dim: int = 32, vocab_size: int = 100, learning_rate: float = 0.01):
@@ -134,7 +138,7 @@ class SecurityAgent:
         
         Args:
             surprise_score: Calculated surprise score
-            threshold: Anomaly threshold (default: 4.5)
+            threshold: Anomaly threshold (default: 4.2)
             
         Returns:
             True if anomalous, False otherwise

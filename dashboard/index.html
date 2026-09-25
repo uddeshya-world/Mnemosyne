@@ -79,17 +79,16 @@
             align-items: center;
             gap: 10px;
             padding: 10px 20px;
-            background: rgba(102, 187, 106, 0.1);
-            border: 1px solid var(--accent-green);
+            background: rgba(176, 176, 192, 0.08);
+            border: 1px solid var(--border-color);
             border-radius: 25px;
         }
 
         .status-dot {
             width: 10px;
             height: 10px;
-            background: var(--accent-green);
+            background: var(--text-secondary);
             border-radius: 50%;
-            animation: pulse 2s infinite;
         }
 
         @keyframes pulse {
@@ -384,7 +383,7 @@
 </head>
 <body>
     <div class="blocked-animation" id="blockedPopup">
-        🛡️ ATTACK BLOCKED BY TITANS
+        ATTACK BLOCKED
     </div>
 
     <header class="header">
@@ -392,12 +391,12 @@
             <div class="logo-icon">🧠</div>
             <div class="logo-text">
                 <h1>Project Mnemosyne</h1>
-                <span>Stateful Agent Firewall using Titans</span>
+                <span>Proxy with Titans neural memory</span>
             </div>
         </div>
         <div class="status-indicator" id="systemStatus">
             <div class="status-dot"></div>
-            <span>System Online</span>
+            <span>Dashboard loaded</span>
         </div>
     </header>
 
@@ -412,7 +411,7 @@
             </div>
             <div class="status-grid">
                 <div class="status-item" id="brainStatus">
-                    <div class="name">Titans Brain</div>
+                    <div class="name">Memory service</div>
                     <div class="value" id="brainStatusText">Checking...</div>
                 </div>
                 <div class="status-item" id="proxyStatus">
@@ -467,12 +466,12 @@
             </div>
         </div>
 
-        <!-- Live Logs -->
+        <!-- Activity log -->
         <div class="card full-width">
             <div class="card-header">
                 <div class="card-title">
                     <span class="icon">📜</span>
-                    Live Activity Log
+                    Activity log
                 </div>
                 <button class="btn btn-primary" onclick="clearLogs()" style="padding: 8px 16px;">
                     Clear
@@ -488,7 +487,7 @@
             <div class="card-header">
                 <div class="card-title">
                     <span class="icon">🏗️</span>
-                    Live Architecture Flow
+                    Request path
                 </div>
             </div>
             <div class="architecture">
@@ -501,7 +500,7 @@
                 </div>
                 <div class="arch-arrow">→</div>
                 <div class="arch-component" id="archBrain">
-                    🧠 Titans Brain<br><small>LSTM + MLP</small>
+                    Neural memory<br><small>LSTM + MLP</small>
                 </div>
                 <div class="arch-arrow">→</div>
                 <div class="arch-component" id="archDecision">
@@ -547,9 +546,8 @@
                 document.getElementById('proxyStatusText').textContent = '❌ Offline';
             }
 
-            // eBPF status (manual indicator for now)
-            document.getElementById('ebpfStatus').classList.add('active');
-            document.getElementById('ebpfStatusText').textContent = '✅ Running';
+            // This page does not probe the eBPF loader.
+            document.getElementById('ebpfStatusText').textContent = 'Not checked';
         }
 
         function addLog(message, type = 'info') {

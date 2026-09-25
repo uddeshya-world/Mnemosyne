@@ -1,82 +1,74 @@
-# Project Mnemosyne: Titans-Based Agent Firewall for LLMs
+# Project Mnemosyne
 
-![Architecture](https://img.shields.io/badge/Architecture-eBPF%20%2B%20Titans-blueviolet)
-![Rust](https://img.shields.io/badge/Rust-1.75-orange)
+![Architecture](https://img.shields.io/badge/Architecture-eBPF%20%2B%20Titans%20memory-blueviolet)
+![Rust](https://img.shields.io/badge/Rust-Axum-orange)
 ![eBPF](https://img.shields.io/badge/eBPF-XDP-yellow)
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
-![Dashboard](https://img.shields.io/badge/Dashboard-Live-green)
 
-**Project Mnemosyne** is a stateful, kernel-level "Agent Firewall" designed to secure Large Language Model (LLM) traffic. It acts as a sidecar proxy that intercepts prompts, analyzes them for malicious intent (jailbreaks, injections) using a **Titans neural memory** architecture, and blocks threats at the network level using **eBPF (XDP)**.
+**Project Mnemosyne** is a sidecar HTTP proxy for chat-completion traffic. It scores the latest user message with a small neural memory and either forwards the JSON body to the Groq API or returns HTTP 403.
 
-## 🛡️ Key Features
+In this repository, **Titans** means that memory module only: the embedding, LSTM, and MLP in `brain/titans.py`, updated with one gradient step at request time. Titans does not name an agent, the proxy, or the eBPF program.
 
-- **🧠 Titans Neural Brain**: Uses Test-Time Training (TTT) and Neural Memory (LSTM + MLP) to detect anomalous patterns and "surprise" in user queries.
-- **🐝 eBPF Kernel Hook**: High-performance packet inspection and blocking at the XDP (Express Data Path) layer in the Linux kernel.
-- **🦀 Rust Interceptor**: A fast, async proxy (Axum) that sits between the user and the LLM (Groq API), enforcing security policies.
-- **📊 Live Dashboard**: Real-time web UI to visualize system status, attack simulations, and blocked threats.
-- **⚡ Low Latency**: Optimized for minimal overhead (<250ms added latency).
+The XDP program in `ebpf_probe/ebpf_program/src/main.rs` returns `XDP_PASS` for every packet. Packet drops are not implemented there. HTTP blocking is the proxy's 403 response.
 
-## 🏗️ Architecture
+## What is in the tree
+
+- **Memory service (`brain/`)**: FastAPI on port 5000. Surprise is next-character cross-entropy. `POST /analyze` schedules `update_memory` as a background task. The handler always uses the session id `global_demo_session`. The session id sent by the proxy is logged and is not used to choose a memory.
+- **Proxy (`proxy/`)**: Axum on port 8080. `POST /chat/completions` calls the brain, then forwards to `https://api.groq.com/openai/v1/chat/completions` or returns 403. The Groq body is buffered with `resp.text()` and returned whole. The handler does not stream. If the brain cannot be reached or its JSON cannot be parsed, the proxy returns 503.
+- **eBPF probe (`ebpf_probe/`)**: An Aya XDP program and a user-space loader. The program passes every packet.
+- **Dashboard (`dashboard/index.html`)**: A static page that can call the brain health route, the proxy health route, and `POST /chat/completions`. It does not probe the eBPF loader.
+- **`tests/attack_sim.py`**: A script that sends prompts to a running proxy. It is not a unit test. The repository has no CI workflow.
+
+A file-by-file description of what the source shows, and of earlier completion wording that the source does not support, is in [docs/IMPLEMENTATION_NOTES.md](docs/IMPLEMENTATION_NOTES.md).
+
+## Architecture
 
 ```mermaid
 graph TD
-    User["User / Application"] -->|HTTP POST| Proxy["Rust Proxy :8080"]
-    
-    subgraph "Kernel Space (WSL/Linux)"
-    eBPF["eBPF XDP Hook"]
-    end
-    
-    subgraph "Project Mnemosyne"
-    Proxy -->|Intercept| eBPF
-    Proxy -->|Analyze Text| Brain["Titans Brain :5000"]
-    Brain -->|Score & Update| Memory[("Neural Memory")]
-    Brain -->|Anomaly Score| Proxy
-    end
-    
-    Proxy -->|Safe| LLM["Groq Cloud API"]
-    Proxy -->|Malicious| Block["403 Blocked"]
-    
-    Dashboard["Web Dashboard :3000"] -.-> Proxy
+    User["User / Application"] -->|HTTP POST| Proxy["Rust proxy :8080"]
+    Proxy -->|POST /analyze| Brain["Brain :5000"]
+    Brain --> Memory[("Neural memory")]
+    Brain -->|surprise score| Proxy
+    Proxy -->|score at or below threshold| LLM["Groq API"]
+    Proxy -->|score above threshold| Block["403"]
+    eBPF["eBPF XDP program (XDP_PASS)"]
+    Dashboard["Static dashboard"] -.-> Proxy
     Dashboard -.-> Brain
 ```
 
-## 🚀 Quick Start
+## Quick start
 
 ### Prerequisites
-1. **Docker Desktop** (running)
-2. **WSL2** (for eBPF kernel features on Windows)
-3. **Groq API Key**
-4. **Python 3.11+**
 
-### 1. Start Core Services (Brain + Proxy)
+1. Docker, for the brain and proxy images
+2. A Linux kernel if you attach the XDP program (native Linux or WSL2)
+3. A Groq API key, required by the proxy at startup
+4. Python 3.11 or newer, if you serve the dashboard directory or run `tests/attack_sim.py`
+
+### 1. Start the brain and the proxy
+
 ```bash
-# Set your API key
 export GROQ_API_KEY=gsk_your_key_here
-
-# Start services
 docker compose up -d
 ```
 
-### 2. Start eBPF Agent (WSL)
-*Note: This must be run in a WSL terminal with sudo privileges.*
-```bash
-cd ebpf_probe
-# Build first (if needed)
-cargo build --package user_loader 
-# Attach to interface
-sudo ./target/debug/user_loader --iface eth0
-```
+`docker-compose.yml` starts those two services. The proxy `depends_on` the brain. The compose file has no `healthcheck`.
 
-### 3. Launch Dashboard
+### 2. eBPF loader
+
+Optional and separate from the proxy. See [ebpf_probe/README_EBPF.md](ebpf_probe/README_EBPF.md). Attaching the loader does not add packet filtering with the program that is checked in.
+
+### 3. Dashboard
+
 ```bash
 python -m http.server 3000 --directory dashboard
 ```
-> Open **http://localhost:3000** in your browser.
 
-## 📡 API Usage
+Open http://localhost:3000.
 
-### Send a Chat Request
-Interact with the proxy just like the OpenAI API:
+## API
+
+Send a chat-completion JSON body to the proxy:
 
 ```bash
 curl -X POST http://localhost:8080/chat/completions \
@@ -89,57 +81,38 @@ curl -X POST http://localhost:8080/chat/completions \
   }'
 ```
 
-- **Safe Response (200 OK)**: Returns the LLM completion.
-- **Blocked Response (403 Forbidden)**:
-  ```json
-  {
-    "error": "security_violation",
-    "message": "Request blocked due to anomalous pattern (surprise score: 5.8)"
-  }
-  ```
+- **200**: the Groq response body, when the brain sets `is_anomaly` to false.
+- **403**: the brain set `is_anomaly` to true. The body uses `error` `security_violation` and a `message` that includes the surprise score returned by the brain.
+- **503**: the proxy could not obtain a parseable analysis from the brain.
 
-## 🧪 How It Works
+If `model` is omitted, the proxy sets `llama-3.1-8b-instant` before forwarding.
 
-### 1. The Titans Brain (Anomaly Detection)
-The "Brain" uses a **Titans MAC** architecture. It maintains a short-term context (LSTM) and a long-term neural memory (MLP).
-- **Surprise Score**: It calculates how "surprising" the next token in a prompt is based on its memory.
-- **Anomaly**: High surprise scores indicate disjointed, obfuscated, or malicious prompts (e.g., "Ignore previous instructions").
-- **Learning**: It learns from "normal" traffic (e.g., via `warmup` in the simulation) to reduce false positives.
+## How the score is computed
 
-### 2. eBPF Integration
-We use **Aya** (Rust eBPF library) to load an XDP program into the kernel.
-- **Monitoring**: Counts and inspects packets destined for the proxy port.
-- **Blocking**: Can drop malicious packets before they reach user space (demonstrated in dashboard).
+`brain/titans.py` maps each character with `ord(c) % 100`, runs the embedding, LSTM, and MLP, and uses cross-entropy against the next character as the surprise score. `is_anomalous` uses a default threshold of `4.2`. `update_memory` takes one Adam step at learning rate `0.01`.
 
-## 📂 Repository Structure
+Older descriptions called this module a Titans MAC architecture. The code is the network described above: there is no separate associative-memory update beyond the LSTM state and that single Adam step.
+
+## Repository layout
 
 ```
-ebpf_agent/
-├── brain/              # Python: Titans Neural Memory (PyTorch)
-├── proxy/              # Rust: HTTP Proxy & Logic (Axum)
-├── ebpf_probe/         # Rust: eBPF Kernel Program (Aya)
-│   ├── ebpf_program/   # Kernel-space code (XDP)
-│   └── user_loader/    # User-space loader
-├── dashboard/          # HTML/JS Web Dashboard
-├── tests/              # Python: Attack Simulation Scripts
-└── docker-compose.yml  # Orchestration
+├── brain/              # FastAPI service and neural memory
+├── proxy/              # Axum proxy
+├── ebpf_probe/         # XDP program and loader
+├── dashboard/          # Static HTML page
+├── tests/              # attack_sim.py
+├── docs/               # Implementation notes
+└── docker-compose.yml
 ```
 
-## 🎮 Simulation & Verification
+## Simulation script
 
-We provide a built-in simulation suite to verify security:
-
-1. **Normal Traffic**: Standard queries ("What is the weather?") -> **Passed**
-2. **Jailbreak**: "Ignore safety guidelines..." -> **Blocked** (High Surprise)
-3. **Obfuscated**: "i-g-n-o-r-e..." -> **Blocked**
-
-Run it via the Dashboard or CLI:
 ```bash
 python tests/attack_sim.py
 ```
 
-## 🤝 Contributing
-Contributions welcome! Please check the `implementation_plan.md` for future roadmap items.
+The default proxy URL is `http://localhost:8080`. A different URL can be passed as the first argument. The script warms the memory, sends one benign prompt, sends a five-step prompt sequence (it returns when it sees HTTP 403), runs a five-sample latency loop, then sends a two-turn message list and one hyphenated string. In the latency loop, the script prints success when the average of HTTP 200 samples is under 2000 ms. It writes `test_results.json` in the working directory. That output is gitignored. The script needs a running proxy and a Groq key. This repository does not record a result for it.
 
-## 📝 License
-MIT License
+## License
+
+This repository does not include a license file.

@@ -7,12 +7,10 @@ use aya_ebpf::{
     programs::XdpContext,
 };
 
-/// Simple XDP Firewall - Just passes all packets for now
-/// In production, this would inspect packets and make filtering decisions
+/// XDP program. Returns XDP_PASS for every packet.
+/// Does not read packet data and does not drop traffic.
 #[xdp]
 pub fn xdp_firewall(_ctx: XdpContext) -> u32 {
-    // For MVP: Just pass all packets through
-    // The fact that this runs proves we have kernel-level access!
     xdp_action::XDP_PASS
 }
 
