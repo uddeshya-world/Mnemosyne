@@ -15,4 +15,5 @@ Cargo.lock
 .idea/
 *.log
 proxy_build_error.txt
+build_error.txt
 test_results.json
